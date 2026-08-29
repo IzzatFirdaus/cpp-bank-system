@@ -1,0 +1,6 @@
+bank_app
+bank_app.exe
+*.o
+.vscode/
+log.txt
+
