@@ -1,6 +1,10 @@
 bank_app
 bank_app.exe
 *.o
+*.obj
+*.exe
 .vscode/
 log.txt
+build/
+out/
 
