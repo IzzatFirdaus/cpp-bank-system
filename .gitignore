@@ -7,4 +7,12 @@ bank_app.exe
 log.txt
 build/
 out/
+# Ignore Playwright generated files
+.playwright-mcp/
+
+# Ignore server executable
+bank_server.exe
+
+# Ignore test executables
+/tests/test_account.exe
 
