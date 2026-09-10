@@ -5,9 +5,11 @@
 
 namespace bank {
 
-// Base account. Stub: signatures mirror the root-level Account.h (v1).
-// Full logic intentionally lives in the root header for v1; this file
-// exists to anchor the bank:: include path for future migration.
+// Base account: identity, balance, deposit, withdraw, transactional logging.
+// Invariants:
+//   - balance >= 0.0 after every accepted operation
+//   - accountNumber contains no '\n', '\r', or '|' (sanitized at construction)
+//   - deposit/withdraw log ONLY on accepted state changes
 class Account {
 protected:
     std::string accountNumber;
