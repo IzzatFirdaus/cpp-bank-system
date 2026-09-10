@@ -1,11 +1,23 @@
-// v1 demo driver. Full implementation retained in the root main.cpp
-// until the src/ migration is completed. This stub documents intent.
+// v1 demo driver. Deterministic flow: deposit -> withdraw -> applyInterest.
+// All logging happens inside the account operations (transactional).
 #include <iostream>
+#include <memory>
 
 #include "bank/SavingsAccount.h"
 
 int main() {
-    std::cout << "[stub] cpp-bank-system demo driver\n";
-    std::cout << "Run the root-level main.cpp for the current v1 behavior.\n";
+    auto myAcc = std::make_unique<bank::SavingsAccount>("ACC-1001", 500.00, 2.5);
+
+    std::cout << "--- Smart Banking System ---\n";
+    std::cout << "Account: " << myAcc->getAccountNumber() << "\n";
+    std::cout << "Initial Balance: $" << myAcc->getBalance() << "\n";
+
+    myAcc->deposit(150.00);
+    myAcc->withdraw(50.00);
+    myAcc->applyInterest();
+
+    std::cout << "Final Balance after interest: $" << myAcc->getBalance() << "\n";
+    std::cout << "Transactions logged to log.txt.\n";
+
     return 0;
 }
