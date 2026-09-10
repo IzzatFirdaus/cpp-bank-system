@@ -8,53 +8,48 @@
 | --- | --- | --- |
 | Language | C++20 | Matches existing toolchain (`-std=c++20`); enables `std::unique_ptr`, `<filesystem>`, concepts if needed later |
 | Compiler | `g++` (GCC) | Already wired into the VS Code build task |
-| Build | Single `g++` invocation, no build system | Repo is intentionally a one-binary demo |
-| Runtime deps | C++ standard library only | No external packages, no vcpkg/conan |
+| Build | Single `g++` invocation, no build system | Repo is intentionally simple: one command per target |
+| Runtime deps | C++ standard library + `cpp-httplib` (single-header, vendored) | `cpp-httplib` provides HTTP server with zero external package managers |
 | Storage | Plain-text `log.txt` (append-only) | Matches the PRD's audit-trail scope |
+| Web frontend | HTML5, CSS3, vanilla JavaScript (ES6) | No framework dependencies; served as static files by the HTTP server |
 | Tests (future) | Header-only assertion macros or `doctest` single-header | Keep zero-dep until the test suite actually grows |
 
 ## 2. Repository Layout
 
 ```
 cpp-bank-system/
-├── Account.h              # Base class: identity, balance, deposit, withdraw, logging
-├── SavingsAccount.h       # Derived class: interest rate, applyInterest()
-├── main.cpp               # Demo entry point
-├── PRD.md                 # Product requirements
-├── ARCHITECTURE.md        # This file — full technical spec
-├── ARCHITECTURE-ESSENTIALS.md  # Fast-load summary + stress-test audit
-├── AGENTS.md              # Operational rules for AI contributors
-├── CLAUDE.md              # CLI quickstart for LLM tools
-├── README.md              # User-facing documentation
-├── log.txt                # Generated at runtime (gitignored)
-└── .vscode/
-    └── tasks.json         # g++ build task
-```
-
-After the scaffold pass (Step 6), the layout will additionally contain:
-
-```
-cpp-bank-system/
 ├── include/
+│   ├── httplib.h                   # cpp-httplib single-header HTTP library (vendored)
 │   └── bank/
-│       ├── Account.h
-│       ├── SavingsAccount.h
-│       └── CheckingAccount.h        # stub, future variant
+│       ├── Account.h               # Base class: identity, balance, deposit, withdraw
+│       ├── SavingsAccount.h        # Derived class: interest rate, applyInterest()
+│       ├── CheckingAccount.h       # stub, future variant
+│       ├── Logger.h                # append-only sink for log.txt
+│       └── Bank.h                  # owns accounts (collection facade)
 ├── src/
-│   ├── main.cpp
-│   ├── Logger.h                     # append-only sink
-│   ├── Bank.h                       # owns accounts (collection facade)
-│   └── Menu.h                       # optional CLI menu (v2)
-├── tests/                           # reserved
-└── docs/
-    ├── PRD.md
-    ├── ARCHITECTURE.md
-    ├── ARCHITECTURE-ESSENTIALS.md
-    ├── AGENTS.md
-    └── CLAUDE.md
+│   ├── main.cpp                    # Console demo driver (deterministic flow)
+│   ├── server.cpp                  # REST API server + static file serving
+│   ├── Account.cpp                 # Account implementation
+│   ├── Logger.cpp                  # Logger implementation
+│   └── Bank.cpp                    # Bank facade implementation
+├── public/
+│   └── index.html                  # Web dashboard (served by the HTTP server)
+├── tests/                          # Reserved for future tests
+├── Account.h                       # v1: root-level header (legacy, unchanged public API)
+├── SavingsAccount.h                # v1: root-level header (legacy)
+├── main.cpp                        # v1: root-level demo driver (legacy)
+├── PRD.md                          # Product requirements
+├── ARCHITECTURE.md                 # This file — full technical spec
+├── ARCHITECTURE-ESSENTIALS.md      # Fast-load summary + stress-test audit
+├── AGENTS.md                       # Operational rules for AI contributors
+├── CLAUDE.md                       # CLI quickstart for LLM tools
+├── README.md                       # User-facing documentation
+├── log.txt                         # Generated at runtime (gitignored)
+└── .vscode/
+    └── tasks.json                  # Build tasks (console + server)
 ```
 
-The migration from root-level headers to `include/bank/` is staged: the root copies remain in v1 so existing README commands keep working. New code references the `bank/` namespace.
+The migration from root-level headers to `include/bank/` is staged: the root copies remain so existing README commands keep working. New code references the `bank/` namespace.
 
 ## 3. Data Model
 
@@ -113,6 +108,7 @@ protected:
 
 Adds:
 - `interestRate` (constructor argument, percentage).
+- `getInterestRate()` — returns the annual interest rate (added for REST API exposure).
 - `applyInterest()` — credits `balance * (rate / 100)` and logs `INTEREST_ADD`.
 
 Does not override `deposit` / `withdraw`.
@@ -169,7 +165,38 @@ private:
 };
 ```
 
-### 4.6 `main.cpp`
+### 4.6 `server.cpp` — REST API Server
+
+A thin HTTP adapter that exposes the `bank::Account` domain engine as JSON endpoints. Built with `cpp-httplib` (single-header, vendored at `include/httplib.h`).
+
+**Responsibilities:**
+- Parse HTTP requests and extract JSON payloads.
+- Call `Account` / `SavingsAccount` methods.
+- Return JSON responses with appropriate HTTP status codes.
+- Serve static files from `public/` (the web dashboard).
+- Set CORS headers for local browser development.
+- Listen on `http://0.0.0.0:8080` (port configurable via CLI argument).
+
+**Does NOT contain business logic.** All validation and invariant enforcement lives in `Account` and `SavingsAccount`.
+
+**Endpoints:**
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/account` | Returns account number, balance, interest rate as JSON |
+| `POST` | `/api/deposit` | Accepts `{"amount": N}`, calls `deposit()`, returns updated balance |
+| `POST` | `/api/withdraw` | Accepts `{"amount": N}`, calls `withdraw()`, returns success + balance |
+| `POST` | `/api/apply-interest` | Calls `applyInterest()`, returns new balance + credited interest |
+| `GET` | `/api/logs` | Reads last 50 lines of `log.txt`, returns as JSON array |
+
+**Error handling:**
+- Invalid/non-positive amounts → HTTP 400 with `{"success":false,"error":"..."}`.
+- Withdrawal exceeds balance → HTTP 422 with `{"success":false,"error":"Insufficient funds.","balance":...}`.
+- Server startup failure → non-zero exit code with stderr message.
+
+**JSON helpers:** Minimal `json::escape()`, `json::fmt()`, and `json::get_number()` functions are defined locally in `server.cpp`. No external JSON library is used.
+
+### 4.7 `main.cpp`
 
 For v1, continues to run the deterministic demo (deposit / withdraw / applyInterest). For v1.1+, can be replaced by a thin driver that constructs a `Bank`, registers accounts, and either runs the demo or hands control to `Menu`.
 
@@ -194,29 +221,59 @@ Account: ACC-1001 | Action: INTEREST_ADD | Amount: $15
 
 ### 6.1 Build
 
+Console demo:
+
 ```powershell
 g++ -std=c++20 src/main.cpp -Iinclude -o bank_app.exe
 ```
 
-The `-Iinclude` flag is optional in v1 because the root headers still compile, but new code under `src/` must include like `#include "bank/Account.h"`.
+REST API server (add `-lws2_32` on Windows for Winsock):
+
+```powershell
+g++ -std=c++20 src/server.cpp src/Account.cpp src/Logger.cpp -Iinclude -lws2_32 -o bank_server.exe
+```
+
+Globbing all source files (builds both `main` and `server` — causes a linker error due to duplicate `main()`; use the explicit commands above):
+
+```powershell
+g++ -std=c++20 src/*.cpp -Iinclude -o bank_app.exe
+```
+
+The `-Iinclude` flag is optional for root-level headers in v1, but new code under `src/` must include like `#include "bank/Account.h"`.
 
 ### 6.2 Run
+
+Console demo:
 
 ```powershell
 .\bank_app.exe
 ```
 
-### 6.3 VS Code task
+REST API server:
 
-`.vscode/tasks.json` already defines the default build task. Step 6 updates the task to also pass `-Iinclude`.
+```powershell
+.\bank_server.exe
+```
+
+The server starts listening on `http://localhost:8080`. The web dashboard is served at `http://localhost:8080/index.html`.
+
+### 6.3 VS Code tasks
+
+`.vscode/tasks.json` defines two build tasks:
+
+| Task | Label | Output |
+| --- | --- | --- |
+| Default build (Ctrl+Shift+B) | `C/C++: g++ build active project` | `bank_app.exe` (console demo) |
+| Server build | `Build REST Server` | `bank_server.exe` (REST API) |
 
 ## 8. Environment Configuration
 
 | Variable | Purpose | Notes |
 | --- | --- | --- |
 | `BANK_LOG_PATH` | Override log file location | Default: `./log.txt`. Reserved for v1.1, not consumed in v1 |
+| Port 8080 | HTTP server listen address | Default for `bank_server.exe`; override via CLI arg (`.\bank_server.exe 9090`) |
 
-No `.env`, no secrets, no network configuration.
+No `.env`, no secrets, no external network configuration.
 
 ## 9. Error Handling Policy
 
@@ -232,9 +289,9 @@ Out of scope for v1. `Logger` is process-serial. If threading is introduced late
 
 ## 11. Versioning & Compatibility
 
-- v1 = current demo, single account, deterministic flow.
-- v1.1 = `Logger` extraction, `CheckingAccount`, optional CLI menu.
-- v2 = `Bank` facade, persistent state load on startup.
+- v1 = current demo, single account, deterministic flow + REST API server with web dashboard.
+- v1.1 = `Logger` extraction, `CheckingAccount`, optional CLI menu, multi-account `Bank` facade.
+- v2 = Persistent state load on startup, authentication, database-backed storage.
 
 API additions are additive; removals require a major bump.
 

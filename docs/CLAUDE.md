@@ -16,7 +16,7 @@
 
 ### 1.1 Build
 
-Single-command build (matches the existing VS Code task):
+Console demo (single-file build):
 
 ```powershell
 g++ -std=c++20 src/main.cpp -Iinclude -o bank_app.exe
@@ -28,23 +28,49 @@ If you add new `.cpp` files, glob them:
 g++ -std=c++20 src/*.cpp -Iinclude -o bank_app.exe
 ```
 
+REST API server (requires `cpp-httplib`, add `-lws2_32` on Windows):
+
+```powershell
+g++ -std=c++20 src/server.cpp src/Account.cpp src/Logger.cpp -Iinclude -lws2_32 -o bank_server.exe
+```
+
 ### 1.2 Run
+
+Console demo:
 
 ```powershell
 .\bank_app.exe
 ```
 
+REST API server:
+
+```powershell
+.\bank_server.exe
+```
+
 Expected output:
 
 ```
---- Smart Banking System ---
-Account: ACC-1001
-Initial Balance: $500
-Final Balance after interest: $615
-Transactions logged to log.txt.
+Bank API server listening on http://localhost:8080
+Dashboard: http://localhost:8080/index.html
+Press Ctrl+C to stop.
 ```
 
-### 1.3 Inspect the log
+### 1.3 Use the Web Dashboard
+
+With the server running, open **http://localhost:8080/index.html** in a browser. The dashboard provides:
+- Account summary (ID, balance, interest rate)
+- Deposit / Withdraw / Apply Interest actions
+- Real-time audit log from `log.txt`
+- Toast notifications for success/error feedback
+
+### 1.4 Test the API
+
+```powershell
+curl.exe -s http://localhost:8080/api/account
+```
+
+### 1.5 Inspect the log
 
 ```powershell
 Get-Content .\log.txt
@@ -97,15 +123,21 @@ cpp-bank-system/
 ├── AGENTS.md                 # rules for AI contributors
 ├── CLAUDE.md                 # this file
 ├── include/
+│   ├── httplib.h             # cpp-httplib single-header HTTP library (vendored)
 │   └── bank/
 │       ├── Account.h         # canonical header (post-migration)
 │       ├── SavingsAccount.h
-│       └── CheckingAccount.h # v1.1 stub
+│       ├── CheckingAccount.h # v1.1 stub
+│       ├── Logger.h          # append-only sink
+│       └── Bank.h            # account-collection facade
 ├── src/
-│   ├── main.cpp              # demo driver
-│   ├── Logger.h              # append-only sink
-│   ├── Bank.h                # account-collection facade
-│   └── Menu.h                # optional CLI menu
+│   ├── main.cpp              # console demo driver
+│   ├── server.cpp            # REST API server + static file serving
+│   ├── Account.cpp           # Account implementation
+│   ├── Logger.cpp            # Logger implementation
+│   └── Bank.cpp              # Bank facade implementation
+├── public/
+│   └── index.html            # web dashboard (served by the HTTP server)
 ├── tests/                    # reserved
 └── .vscode/
     └── tasks.json
@@ -113,7 +145,8 @@ cpp-bank-system/
 
 ## 4. VS Code integration
 
-- Default task: `C/C++: g++ build active project` (Ctrl+Shift+B).
+- Default task: `C/C++: g++ build active project` (Ctrl+Shift+B) — builds the console demo.
+- Server task: `Build REST Server` — builds the REST API server.
 - The task glob `src/*.cpp` only — root-level `main.cpp` is intentionally excluded so the two do not collide. Use the explicit build command above if both exist.
 
 ## 5. Adding a new account type — recipe
@@ -135,9 +168,12 @@ cpp-bank-system/
 | Symptom | Likely cause | First check |
 | --- | --- | --- |
 | Linker error: undefined `Account::saveTransaction` | Logger extraction in progress; include path missing | Confirm `-Iinclude` |
+| Linker error: undefined `__imp_setsockopt` etc. | Missing Winsock library on Windows | Add `-lws2_32` to the link flags |
 | `log.txt` missing | Working directory changed | Run from repo root |
 | Balance drifts unexpectedly | Floating-point in `applyInterest` | Document; do not "fix" with rounding in v1 |
 | New header not picked up | Build task globs `src/*.cpp` only | Use the explicit build command |
+| Server port 8080 in use | Another process is occupying the port | Kill the other process or pass a different port (`.\bank_server.exe 9090`) |
+| Dashboard shows "Server unreachable" | Server not running or CORS issue | Confirm `bank_server.exe` is running on port 8080 |
 
 ## 8. Quick reference
 

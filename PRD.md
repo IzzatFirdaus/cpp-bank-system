@@ -18,7 +18,7 @@ This document defines *what* the system does and *why*. Technical decisions live
 | Course instructors / TAs | A reproducible example of class hierarchies and file-based persistence. |
 | Hobbyist contributors | A starting point to add checking accounts, transfers, authentication, or a CLI menu. |
 
-Out of scope for the current release: retail banking customers, regulators, mobile/web clients.
+Out of scope for the current release: retail banking customers, regulators, mobile clients.
 
 ## 3. Personas
 
@@ -69,6 +69,14 @@ Out of scope for the current release: retail banking customers, regulators, mobi
 2. A menu lists: create account, deposit, withdraw, apply interest, list accounts, quit.
 3. Each action echoes the result and writes a log line.
 
+### 6.3 Web dashboard flow
+1. User starts the REST API server (`bank_server.exe`).
+2. User opens `http://localhost:8080/index.html` in a browser.
+3. Dashboard displays account summary (ID, balance, interest rate) from `GET /api/account`.
+4. User can deposit, withdraw, or apply interest using the dashboard controls.
+5. Audit log panel shows recent transactions (fetched from `GET /api/logs`).
+6. Dashboard auto-refreshes every 5 seconds for real-time visibility.
+
 ## 7. Edge-Case Behavior
 
 | Case | Required behavior |
@@ -87,16 +95,19 @@ The PRD is considered met when **all** of the following hold:
 
 - A clean checkout builds with the documented single command and produces `bank_app.exe` (or platform equivalent).
 - Running the executable matches the demo flow in §6.1 and produces the expected `log.txt` content.
+- The REST server builds with the documented command and serves the dashboard at `http://localhost:8080/index.html`; all five API endpoints respond correctly (see `ARCHITECTURE.md` §4.6).
 - Adding a new account type (e.g., `CheckingAccount`) requires changes only in new files plus a one-line registration; no existing source file must be modified.
 - A reviewer can read `Account.h` end-to-end in under 90 seconds and state the invariants.
 
 ## 9. Out of Scope (v1)
 
 - Interactive CLI, password / PIN authentication, multi-user accounts.
-- Network APIs, databases, persistent account storage beyond `log.txt`.
+- Databases, persistent account storage beyond `log.txt`.
 - Currency localization, multi-currency, overdraft fees.
 - Threading or concurrent transactions.
 - Internationalization.
+
+> Note: A local REST API and web dashboard are **in scope** for v1 (see §6.3). The API is a thin adapter over the same in-memory engine; it does not add persistence, authentication, or multi-user support.
 
 ## 10. Open Questions
 

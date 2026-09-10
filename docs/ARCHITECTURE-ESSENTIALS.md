@@ -5,7 +5,7 @@
 ## 1. Non-negotiable rules
 
 1. **Language is C++20.** New code compiles with `-std=c++20`.
-2. **No external dependencies.** Standard library only.
+2. **No external dependencies** except `cpp-httplib` (single-header, vendored at `include/httplib.h`). Standard library only for all other code.
 3. **No raw owning pointers.** Use `std::unique_ptr` (single owner) or `std::shared_ptr` (shared owner). Raw pointers are allowed only as non-owning observers.
 4. **`balance` is non-negative.** Any operation that would make it negative is rejected at the boundary.
 5. **`log.txt` is an audit trail, not a database.** The program never reads it back into state in v1.
@@ -36,6 +36,7 @@ protected:
 class SavingsAccount : public Account {
 public:
     SavingsAccount(std::string accNum, double initialBalance, double rate);  // rate is annual %
+    double getInterestRate() const noexcept;
     void applyInterest();   // credits balance * (rate / 100) and logs INTEREST_ADD
 };
 
@@ -50,9 +51,13 @@ class CheckingAccount : public Account { /* overdraft, v1.1 */ };
 
 | Surface | Path | Purpose |
 | --- | --- | --- |
-| Build | `g++ -std=c++20 src/main.cpp -Iinclude -o bank_app.exe` | Compile the demo binary |
-| VS Code build task | `.vscode/tasks.json` → `C/C++: g++ build active project` | One-click build |
-| Run | `./bank_app.exe` (Windows: `.\bank_app.exe`) | Execute the deterministic demo |
+| Build (demo) | `g++ -std=c++20 src/main.cpp -Iinclude -o bank_app.exe` | Compile the console demo binary |
+| Build (server) | `g++ -std=c++20 src/server.cpp src/Account.cpp src/Logger.cpp -Iinclude -lws2_32 -o bank_server.exe` | Compile the REST API server (add `-lws2_32` on Windows) |
+| VS Code build task | `.vscode/tasks.json` → `C/C++: g++ build active project` | One-click demo build |
+| VS Code server task | `.vscode/tasks.json` → `Build REST Server` | One-click server build |
+| Run (demo) | `.\bank_app.exe` | Execute the deterministic demo |
+| Run (server) | `.\bank_server.exe` | Start HTTP server on port 8080 |
+| Dashboard | `http://localhost:8080/index.html` | Web UI (served by the HTTP server) |
 | Log output | `log.txt` | Append-only audit trail |
 
 ## 4. Logging contract (one-liner)
@@ -63,7 +68,8 @@ class CheckingAccount : public Account { /* overdraft, v1.1 */ };
 
 ```
 +----------------------------+
-| main.cpp                   |  demo driver
+| main.cpp (console demo)    |  deterministic demo driver
+| server.cpp (HTTP server)   |  REST API + static file serving
 +----------------------------+
             |
             v
@@ -74,7 +80,7 @@ class CheckingAccount : public Account { /* overdraft, v1.1 */ };
             v
 +----------------------------+
 | bank::Account              |  base, validates deposit/withdraw
-|   bank::SavingsAccount     |  adds applyInterest()
+|   bank::SavingsAccount     |  adds applyInterest(), getInterestRate()
 |   bank::CheckingAccount    |  (v1.1 stub)
 +----------------------------+
             |
@@ -82,13 +88,23 @@ class CheckingAccount : public Account { /* overdraft, v1.1 */ };
 +----------------------------+
 | bank::Logger               |  append-only sink for log.txt
 +----------------------------+
+
++----------------------------+
+| cpp-httplib (vendored)     |  single-header HTTP library
++----------------------------+
+            |
+            v
++----------------------------+
+| public/index.html          |  web dashboard (HTML5/CSS3/JS)
++----------------------------+
 ```
 
 ## 6. Quick mental model
 
-- One binary, one demo run, one append-only file.
+- One binary, one demo run, one append-only file — OR — one HTTP server, one browser tab, same append-only file.
 - Add a product → new header, no edits to `Account.h`.
 - Add an account type with overdraft → override `withdraw`, keep invariants.
+- The HTTP server (`server.cpp`) is a thin adapter: it parses requests, calls `Account` methods, and returns JSON. It does not contain business logic.
 
 ---
 
